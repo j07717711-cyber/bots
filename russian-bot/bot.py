@@ -15,7 +15,7 @@ if 'imghdr' not in sys.modules:
 # ✅ Добавляем путь к текущей директории
 sys.path.append(os.path.dirname(__file__))
 
-# Теперь можно импортировать telegram
+# --- Импорт Telegram API ---
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
     Application, ApplicationBuilder, CommandHandler, MessageHandler,
@@ -34,6 +34,7 @@ GROUP_ID = int(os.getenv("GROUP_ID", "-4986401168"))
 print("DEBUG: BOT_TOKEN =", BOT_TOKEN)
 print("DEBUG: GROUP_ID =", GROUP_ID)
 
+# --- Константы для этапов анкеты ---
 NAME, AGE, CITIZENSHIP, FROM_COUNTRY, DATES, PEOPLE, PURPOSE, CONTACT = range(8)
 
 # --- Flask ---
@@ -50,6 +51,7 @@ def health():
 def run_flask():
     port = int(os.getenv("PORT", 5000))
     flask_app.run(host="0.0.0.0", port=port)
+
 
 # --- Telegram handlers ---
 async def greet(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -181,10 +183,7 @@ async def run_bot():
     application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, greet))
 
     print("🚀 Бот запущен (async polling)...")
-    await application.initialize()
-    await application.start()
-    await application.updater.start_polling()
-    await application.updater.idle()
+    await application.run_polling(close_loop=False)
 
 
 if __name__ == "__main__":
@@ -195,6 +194,3 @@ if __name__ == "__main__":
 
     # Асинхронный запуск бота
     asyncio.run(run_bot())
-
-
-
