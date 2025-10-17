@@ -1,24 +1,50 @@
 import os
+from dotenv import load_dotenv
+import threading
 import asyncio
+from flask import Flask
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
     ConversationHandler, filters, ContextTypes
 )
 
-# --- Конфигурация из переменных окружения ---
-BOT_TOKEN = os.getenv("8404846856:AAE9RPRzBneZPNqs-TwreIZMxGJ19WYhfuo")
-GROUP_ID = int(os.getenv("GROUP_ID", "-4986401168"))  # запасное значение
+# ✅ Универсальная загрузка .env для Render и локальной среды
+if os.path.exists("/etc/secrets/.env"):
+    load_dotenv("/etc/secrets/.env")
+else:
+    load_dotenv()
 
-# --- Этапы диалога ---
+# Получаем конфиги из переменных окружения
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+GROUP_ID = int(os.getenv("GROUP_ID", "-4986401168"))
+
+# Отладка (удали позже)
+print("DEBUG: BOT_TOKEN =", BOT_TOKEN)
+print("DEBUG: GROUP_ID =", GROUP_ID)
+
 NAME, AGE, CITIZENSHIP, FROM_COUNTRY, DATES, PEOPLE, PURPOSE, CONTACT = range(8)
 
-# --- Приветствие ---
+# --- Flask app для health check ---
+flask_app = Flask(__name__)
+
+@flask_app.route("/")
+def index():
+    return "OK", 200
+
+@flask_app.route("/health")
+def health():
+    return "healthy", 200
+
+def run_flask():
+    port = int(os.getenv("PORT", 5000))
+    flask_app.run(host="0.0.0.0", port=port)
+
+# --- Telegram handlers ---
 async def greet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     name = user.first_name or user.username or "друг"
     keyboard = [["🚀 Начать анкету"]]
-
     try:
         with open("usa_flag.jpg", "rb") as photo:
             await update.message.reply_photo(
@@ -31,7 +57,6 @@ async def greet(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
             )
     except FileNotFoundError:
-        # Если флаг не найден — просто текстовое приветствие
         await update.message.reply_text(
             f"👋 Привет, {name}! 🇺🇸\n\n"
             "Я помогу вам с легальной иммиграцией в США.\n\n"
@@ -39,11 +64,9 @@ async def greet(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         )
 
-# --- Команда /start ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await greet(update, context)
 
-# --- Этапы анкеты ---
 async def start_form(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Как вас зовут?", reply_markup=ReplyKeyboardRemove())
     return NAME
@@ -96,7 +119,6 @@ async def get_purpose(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def get_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["contact"] = update.message.text
-
     data = context.user_data
     message = (
         f"📋 <b>Новая заявка:</b>\n\n"
@@ -109,22 +131,19 @@ async def get_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🎯 Цель: {data.get('purpose')}\n"
         f"📞 Контакт: {data.get('contact')}"
     )
-
     processing = await update.message.reply_text("🕐 Обрабатываем заявку...")
     await asyncio.sleep(2)
     await processing.delete()
-
     await context.bot.send_message(chat_id=GROUP_ID, text=message, parse_mode="HTML")
     await update.message.reply_text("✅ Спасибо! Ваша заявка отправлена.")
     await asyncio.sleep(1)
     await update.message.reply_text("🤖 Команда уже работает над этой заявкой!")
     await asyncio.sleep(1)
-
     await greet(update, context)
     return ConversationHandler.END
 
-# --- Основной запуск ---
-def main():
+
+def run_bot():
     if not BOT_TOKEN:
         print("❌ Ошибка: переменная окружения BOT_TOKEN не задана!")
         return
@@ -154,6 +173,11 @@ def main():
     app.run_polling()
 
 if __name__ == "__main__":
-    main()
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
+
+    run_bot()
+
 
 
