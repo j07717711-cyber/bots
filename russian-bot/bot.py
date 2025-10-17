@@ -1,3 +1,4 @@
+
 import os
 from dotenv import load_dotenv
 import threading
@@ -5,27 +6,25 @@ import asyncio
 from flask import Flask
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
-    ApplicationBuilder, CommandHandler, MessageHandler,
-    ConversationHandler, filters, ContextTypes
+    Application, ApplicationBuilder, CommandHandler, MessageHandler,
+    ConversationHandler, ContextTypes, filters
 )
 
-# ✅ Универсальная загрузка .env для Render и локальной среды
+# ✅ Загрузка .env (Render и локально)
 if os.path.exists("/etc/secrets/.env"):
     load_dotenv("/etc/secrets/.env")
 else:
     load_dotenv()
 
-# Получаем конфиги из переменных окружения
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 GROUP_ID = int(os.getenv("GROUP_ID", "-4986401168"))
 
-# Отладка (удали позже)
 print("DEBUG: BOT_TOKEN =", BOT_TOKEN)
 print("DEBUG: GROUP_ID =", GROUP_ID)
 
 NAME, AGE, CITIZENSHIP, FROM_COUNTRY, DATES, PEOPLE, PURPOSE, CONTACT = range(8)
 
-# --- Flask app для health check ---
+# --- Flask ---
 flask_app = Flask(__name__)
 
 @flask_app.route("/")
@@ -42,18 +41,15 @@ def run_flask():
 
 # --- Telegram handlers ---
 async def greet(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    name = user.first_name or user.username or "друг"
+    name = update.effective_user.first_name or "друг"
     keyboard = [["🚀 Начать анкету"]]
     try:
         with open("usa_flag.jpg", "rb") as photo:
             await update.message.reply_photo(
                 photo=photo,
-                caption=(
-                    f"👋 Привет, {name}! 🇺🇸\n\n"
-                    "Я помогу вам с легальной иммиграцией в США.\n\n"
-                    "Нажмите кнопку ниже, чтобы начать заполнение анкеты 👇"
-                ),
+                caption=(f"👋 Привет, {name}! 🇺🇸\n\n"
+                         "Я помогу вам с легальной иммиграцией в США.\n\n"
+                         "Нажмите кнопку ниже, чтобы начать заполнение анкеты 👇"),
                 reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
             )
     except FileNotFoundError:
@@ -131,24 +127,27 @@ async def get_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🎯 Цель: {data.get('purpose')}\n"
         f"📞 Контакт: {data.get('contact')}"
     )
-    processing = await update.message.reply_text("🕐 Обрабатываем заявку...")
-    await asyncio.sleep(2)
-    await processing.delete()
+
+    await update.message.reply_text("🕐 Обрабатываем заявку...")
+    await asyncio.sleep(1)
     await context.bot.send_message(chat_id=GROUP_ID, text=message, parse_mode="HTML")
     await update.message.reply_text("✅ Спасибо! Ваша заявка отправлена.")
-    await asyncio.sleep(1)
-    await update.message.reply_text("🤖 Команда уже работает над этой заявкой!")
     await asyncio.sleep(1)
     await greet(update, context)
     return ConversationHandler.END
 
 
-def run_bot():
+# --- Основной запуск ---
+async def run_bot():
     if not BOT_TOKEN:
         print("❌ Ошибка: переменная окружения BOT_TOKEN не задана!")
         return
 
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    application = (
+        ApplicationBuilder()
+        .token(BOT_TOKEN)
+        .build()
+    )
 
     conv_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex("(?i)(начать анкету|🚀 начать анкету)"), start_form)],
@@ -165,19 +164,25 @@ def run_bot():
         fallbacks=[],
     )
 
-    app.add_handler(conv_handler)
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, greet))
+    application.add_handler(conv_handler)
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, greet))
 
-    print("🚀 Бот запущен и ожидает сообщений...")
-    app.run_polling()
+    print("🚀 Бот запущен (async polling)...")
+    await application.initialize()
+    await application.start()
+    await application.updater.start_polling()
+    await application.updater.idle()
+
 
 if __name__ == "__main__":
+    # Flask в отдельном потоке
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
 
-    run_bot()
+    # Асинхронный запуск бота
+    asyncio.run(run_bot())
 
 
 
