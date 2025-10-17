@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: russian-bot
+    env: python
+    rootDir: russian-bot
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python bot.py"
