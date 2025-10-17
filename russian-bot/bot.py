@@ -1,10 +1,16 @@
 
 import os
+import sys
 from dotenv import load_dotenv
 import threading
 import asyncio
 from flask import Flask
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
+
+# Добавляем путь к текущей директории, чтобы Python видел imghdr.py
+sys.path.append(os.path.dirname(__file__))
+import imghdr
+
 from telegram.ext import (
     Application, ApplicationBuilder, CommandHandler, MessageHandler,
     ConversationHandler, ContextTypes, filters
