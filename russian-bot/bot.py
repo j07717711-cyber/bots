@@ -1,30 +1,34 @@
-import asyncio
+# bot.py — Render-ready version
 import os
 import threading
 from flask import Flask
 from dotenv import load_dotenv
+import asyncio
+
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
     ConversationHandler, ContextTypes, filters
 )
 
-# --- Загрузка переменных окружения ---
+# --- Load env ---
 load_dotenv()
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+if not BOT_TOKEN:
+    raise RuntimeError("❌ BOT_TOKEN not set. Put BOT_TOKEN into Render Environment variables.")
 GROUP_ID = int(os.getenv("GROUP_ID", "-4986401168"))
 
-# --- Flask сервер (для Render) ---
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "✅ Bot is alive and running on Render!"
-
-# --- Этапы диалога ---
+# --- Conversation states ---
 NAME, AGE, CITIZENSHIP, FROM_COUNTRY, DATES, PEOPLE, PURPOSE, CONTACT = range(8)
 
-# --- Приветствие ---
+# --- Flask app for healthchecks (Render expects a bound port) ---
+app = Flask(__name__)
+
+@app.route("/")
+def index():
+    return "✅ Bot is running (Render health endpoint).", 200
+
+# --- Handlers (kept your original questionnaire logic) ---
 async def greet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     name = user.first_name or user.username or "друг"
@@ -42,43 +46,44 @@ async def greet(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
             )
     except FileNotFoundError:
-        await update.message.reply_text(text, reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
+        await update.message.reply_text(
+            text,
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        )
 
-# --- /start ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await greet(update, context)
 
-# --- Анкета ---
 async def start_form(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Как вас зовут?", reply_markup=ReplyKeyboardRemove())
     return NAME
 
-async def get_name(update, context):
+async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["name"] = update.message.text
     await update.message.reply_text("Ваш возраст?")
     return AGE
 
-async def get_age(update, context):
+async def get_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["age"] = update.message.text
     await update.message.reply_text("Ваше гражданство?")
     return CITIZENSHIP
 
-async def get_citizenship(update, context):
+async def get_citizenship(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["citizenship"] = update.message.text
     await update.message.reply_text("Страна отправления?")
     return FROM_COUNTRY
 
-async def get_from_country(update, context):
+async def get_from_country(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["from_country"] = update.message.text
     await update.message.reply_text("Желательные даты вылета?")
     return DATES
 
-async def get_dates(update, context):
+async def get_dates(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["dates"] = update.message.text
     await update.message.reply_text("Количество человек?")
     return PEOPLE
 
-async def get_people(update, context):
+async def get_people(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["people"] = update.message.text
     reply_keyboard = [
         ["Политическое убежище", "Виза талантов"],
@@ -90,40 +95,48 @@ async def get_people(update, context):
     )
     return PURPOSE
 
-async def get_purpose(update, context):
+async def get_purpose(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["purpose"] = update.message.text
     await update.message.reply_text(
-        "Пожалуйста, оставьте Ваш контакт (телефон, email или Telegram @username):",
+        "Пожалуйста, оставьте Ваш контакт (телефон, email или Telegram @username), "
+        "наш менеджер с Вами свяжется:",
         reply_markup=ReplyKeyboardRemove()
     )
     return CONTACT
 
-async def get_contact(update, context):
+async def get_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["contact"] = update.message.text
     data = context.user_data
 
     message = (
         f"📋 <b>Новая заявка:</b>\n\n"
-        f"👤 Имя: {data['name']}\n"
-        f"🎂 Возраст: {data['age']}\n"
-        f"🛂 Гражданство: {data['citizenship']}\n"
-        f"🌍 Страна отправления: {data['from_country']}\n"
-        f"📅 Даты вылета: {data['dates']}\n"
-        f"👥 Кол-во человек: {data['people']}\n"
-        f"🎯 Цель: {data['purpose']}\n"
-        f"📞 Контакт: {data['contact']}"
+        f"👤 Имя: {data.get('name')}\n"
+        f"🎂 Возраст: {data.get('age')}\n"
+        f"🛂 Гражданство: {data.get('citizenship')}\n"
+        f"🌍 Страна отправления: {data.get('from_country')}\n"
+        f"📅 Даты вылета: {data.get('dates')}\n"
+        f"👥 Кол-во человек: {data.get('people')}\n"
+        f"🎯 Цель: {data.get('purpose')}\n"
+        f"📞 Контакт: {data.get('contact')}"
     )
+
+    processing = await update.message.reply_text("🕐 Обрабатываем заявку...")
+    await asyncio.sleep(1.5)
+    await processing.delete()
 
     await context.bot.send_message(chat_id=GROUP_ID, text=message, parse_mode="HTML")
     await update.message.reply_text("✅ Спасибо! Ваша заявка отправлена.")
-    await asyncio.sleep(1)
+    await asyncio.sleep(0.8)
+    await update.message.reply_text("🤖 Команда уже работает над этой заявкой!")
+    await asyncio.sleep(0.8)
+
     await greet(update, context)
     return ConversationHandler.END
 
-
-# --- Функция запуска Telegram бота ---
-def run_bot():
-    app_telegram = ApplicationBuilder().token(BOT_TOKEN).build()
+# --- Telegram runner (runs in a separate thread) ---
+def telegram_thread_target():
+    # Build synchronous Application and run_polling (blocking) inside thread
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     conv_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex("(?i)(начать анкету|🚀 начать анкету)"), start_form)],
@@ -137,29 +150,27 @@ def run_bot():
             PURPOSE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_purpose)],
             CONTACT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_contact)],
         },
-        fallbacks=[],
+        fallbacks=[]
     )
 
-    app_telegram.add_handler(conv_handler)
-    app_telegram.add_handler(CommandHandler("start", start))
-    app_telegram.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, greet))
+    app.add_handler(conv_handler)
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, greet))
 
-    print("🚀 Telegram bot started polling...")
-    app_telegram.run_polling()
-
-
-# --- Flask сервер ---
-def start_flask():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    # This is blocking call but it's okay inside the thread
+    print("🚀 Telegram thread: starting run_polling()")
+    app.run_polling()
+    print("⚠️ Telegram thread: run_polling() exited")
 
 
-# --- Запуск ---
 if __name__ == "__main__":
-    # Flask в отдельном потоке, бот — в основном
-    flask_thread = threading.Thread(target=start_flask, daemon=True)
-    flask_thread.start()
-    run_bot()
+    # 1) Start Telegram in background daemon thread
+    telegram_thread = threading.Thread(target=telegram_thread_target, name="tg-thread", daemon=True)
+    telegram_thread.start()
 
+    # 2) Run Flask in main thread and bind to PORT (Render uses this to keep service alive)
+    port = int(os.environ.get("PORT", 10000))
+    print(f"🌐 Flask healthcheck available at 0.0.0.0:{port}")
+    app.run(host="0.0.0.0", port=port)
 
 
