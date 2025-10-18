@@ -9,19 +9,19 @@ from telegram.ext import (
     ConversationHandler, ContextTypes, filters
 )
 
-# --- Загружаем токены ---
+# --- Загрузка переменных окружения ---
 load_dotenv()
-BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 GROUP_ID = int(os.getenv("GROUP_ID", "-4986401168"))
 
-# --- Flask для Render ---
+# --- Flask сервер (для Render) ---
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "✅ Bot is running on Render!"
+    return "✅ Bot is alive and running on Render!"
 
-# --- Этапы анкеты ---
+# --- Этапы диалога ---
 NAME, AGE, CITIZENSHIP, FROM_COUNTRY, DATES, PEOPLE, PURPOSE, CONTACT = range(8)
 
 # --- Приветствие ---
@@ -120,8 +120,9 @@ async def get_contact(update, context):
     await greet(update, context)
     return ConversationHandler.END
 
-# --- Основной запуск бота ---
-async def run_bot():
+
+# --- Функция запуска Telegram бота ---
+def run_bot():
     app_telegram = ApplicationBuilder().token(BOT_TOKEN).build()
 
     conv_handler = ConversationHandler(
@@ -143,15 +144,22 @@ async def run_bot():
     app_telegram.add_handler(CommandHandler("start", start))
     app_telegram.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, greet))
 
-    print("🚀 Бот запущен и слушает обновления...")
-    await app_telegram.run_polling()
+    print("🚀 Telegram bot started polling...")
+    app_telegram.run_polling()
 
-# --- Flask сервер в отдельном потоке ---
+
+# --- Flask сервер ---
 def start_flask():
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
 
+
+# --- Запуск ---
 if __name__ == "__main__":
-    threading.Thread(target=start_flask, daemon=True).start()
-    asyncio.run(run_bot())
+    # Flask в отдельном потоке, бот — в основном
+    flask_thread = threading.Thread(target=start_flask, daemon=True)
+    flask_thread.start()
+    run_bot()
+
 
 
