@@ -1,4 +1,4 @@
-# bot.py — Render-ready version (fixed event loop issue)
+# bot.py — Render-ready version (final fix)
 import os
 import threading
 import asyncio
@@ -29,7 +29,7 @@ def index():
     return "✅ Bot is running (Render health endpoint).", 200
 
 
-# --- Handlers (анкета полностью сохранена) ---
+# --- Handlers ---
 async def greet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     name = user.first_name or user.username or "друг"
@@ -39,7 +39,6 @@ async def greet(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Я помогу вам с легальной иммиграцией в США.\n\n"
         "Нажмите кнопку ниже, чтобы начать заполнение анкеты 👇"
     )
-
     try:
         with open("usa_flag.jpg", "rb") as photo:
             await update.message.reply_photo(
@@ -136,13 +135,12 @@ async def get_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 
-# --- Telegram runner with event loop fix ---
+# --- Telegram runner with event loop and signal fix ---
 def telegram_thread_target():
-    # Создаём новый event loop в этом потоке
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    application = ApplicationBuilder().token(BOT_TOKEN).build()
 
     conv_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex("(?i)(начать анкету|🚀 начать анкету)"), start_form)],
@@ -159,21 +157,21 @@ def telegram_thread_target():
         fallbacks=[]
     )
 
-    app.add_handler(conv_handler)
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, greet))
+    application.add_handler(conv_handler)
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, greet))
 
     print("🚀 Telegram thread: starting run_polling()")
-    loop.run_until_complete(app.run_polling())
+    loop.run_until_complete(application.run_polling(stop_signals=None))
     print("⚠️ Telegram thread: run_polling() exited")
 
 
 if __name__ == "__main__":
-    # 1️⃣ Запускаем Telegram в отдельном потоке
+    # 1️⃣ Telegram bot thread
     telegram_thread = threading.Thread(target=telegram_thread_target, name="tg-thread", daemon=True)
     telegram_thread.start()
 
-    # 2️⃣ Flask остаётся для Render health-check
+    # 2️⃣ Flask for Render healthcheck
     port = int(os.environ.get("PORT", 10000))
     print(f"🌐 Flask healthcheck available at 0.0.0.0:{port}")
     app.run(host="0.0.0.0", port=port)
