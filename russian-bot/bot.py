@@ -11,42 +11,38 @@ from telegram.ext import (
 
 # --- Загружаем токены ---
 load_dotenv()
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8404846856:AAE9RPRzBneZPNqs-TwreIZMxGJ19WYhfuo")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 GROUP_ID = int(os.getenv("GROUP_ID", "-4986401168"))
-
-# --- Этапы анкеты ---
-NAME, AGE, CITIZENSHIP, FROM_COUNTRY, DATES, PEOPLE, PURPOSE, CONTACT = range(8)
 
 # --- Flask для Render ---
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "✅ Bot is running!"
+    return "✅ Bot is running on Render!"
+
+# --- Этапы анкеты ---
+NAME, AGE, CITIZENSHIP, FROM_COUNTRY, DATES, PEOPLE, PURPOSE, CONTACT = range(8)
 
 # --- Приветствие ---
 async def greet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     name = user.first_name or user.username or "друг"
     keyboard = [["🚀 Начать анкету"]]
+    text = (
+        f"👋 Привет, {name}! 🇺🇸\n\n"
+        "Я помогу вам с легальной иммиграцией в США.\n\n"
+        "Нажмите кнопку ниже, чтобы начать заполнение анкеты 👇"
+    )
     try:
         with open("usa_flag.jpg", "rb") as photo:
             await update.message.reply_photo(
                 photo=photo,
-                caption=(
-                    f"👋 Привет, {name}! 🇺🇸\n\n"
-                    "Я помогу вам с легальной иммиграцией в США.\n\n"
-                    "Нажмите кнопку ниже, чтобы начать заполнение анкеты 👇"
-                ),
+                caption=text,
                 reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
             )
     except FileNotFoundError:
-        await update.message.reply_text(
-            f"👋 Привет, {name}! 🇺🇸\n\n"
-            "Я помогу вам с легальной иммиграцией в США.\n\n"
-            "Нажмите кнопку ниже, чтобы начать заполнение анкеты 👇",
-            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        )
+        await update.message.reply_text(text, reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
 
 # --- /start ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -57,32 +53,32 @@ async def start_form(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Как вас зовут?", reply_markup=ReplyKeyboardRemove())
     return NAME
 
-async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def get_name(update, context):
     context.user_data["name"] = update.message.text
     await update.message.reply_text("Ваш возраст?")
     return AGE
 
-async def get_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def get_age(update, context):
     context.user_data["age"] = update.message.text
     await update.message.reply_text("Ваше гражданство?")
     return CITIZENSHIP
 
-async def get_citizenship(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def get_citizenship(update, context):
     context.user_data["citizenship"] = update.message.text
     await update.message.reply_text("Страна отправления?")
     return FROM_COUNTRY
 
-async def get_from_country(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def get_from_country(update, context):
     context.user_data["from_country"] = update.message.text
     await update.message.reply_text("Желательные даты вылета?")
     return DATES
 
-async def get_dates(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def get_dates(update, context):
     context.user_data["dates"] = update.message.text
     await update.message.reply_text("Количество человек?")
     return PEOPLE
 
-async def get_people(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def get_people(update, context):
     context.user_data["people"] = update.message.text
     reply_keyboard = [
         ["Политическое убежище", "Виза талантов"],
@@ -94,16 +90,15 @@ async def get_people(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return PURPOSE
 
-async def get_purpose(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def get_purpose(update, context):
     context.user_data["purpose"] = update.message.text
     await update.message.reply_text(
-        "Пожалуйста, оставьте Ваш контакт (телефон, email или Telegram @username), "
-        "наш менеджер с Вами свяжется:",
+        "Пожалуйста, оставьте Ваш контакт (телефон, email или Telegram @username):",
         reply_markup=ReplyKeyboardRemove()
     )
     return CONTACT
 
-async def get_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def get_contact(update, context):
     context.user_data["contact"] = update.message.text
     data = context.user_data
 
@@ -119,22 +114,15 @@ async def get_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📞 Контакт: {data['contact']}"
     )
 
-    processing = await update.message.reply_text("🕐 Обрабатываем заявку...")
-    await asyncio.sleep(2)
-    await processing.delete()
-
     await context.bot.send_message(chat_id=GROUP_ID, text=message, parse_mode="HTML")
     await update.message.reply_text("✅ Спасибо! Ваша заявка отправлена.")
     await asyncio.sleep(1)
-    await update.message.reply_text("🤖 Команда уже работает над этой заявкой!")
-    await asyncio.sleep(1)
-
     await greet(update, context)
     return ConversationHandler.END
 
-# --- Запуск Telegram-бота ---
+# --- Основной запуск бота ---
 async def run_bot():
-    application = ApplicationBuilder().token(BOT_TOKEN).build()
+    app_telegram = ApplicationBuilder().token(BOT_TOKEN).build()
 
     conv_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex("(?i)(начать анкету|🚀 начать анкету)"), start_form)],
@@ -151,23 +139,19 @@ async def run_bot():
         fallbacks=[],
     )
 
-    application.add_handler(conv_handler)
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, greet))
+    app_telegram.add_handler(conv_handler)
+    app_telegram.add_handler(CommandHandler("start", start))
+    app_telegram.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, greet))
 
-    print("🚀 Бот запущен (async polling)...")
-    await application.run_polling()
+    print("🚀 Бот запущен и слушает обновления...")
+    await app_telegram.run_polling()
 
-# --- Flask в отдельном потоке ---
+# --- Flask сервер в отдельном потоке ---
 def start_flask():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
 
 if __name__ == "__main__":
-    # Flask в отдельном потоке
     threading.Thread(target=start_flask, daemon=True).start()
-
-    # Telegram-бот в основном потоке
     asyncio.run(run_bot())
 
 
