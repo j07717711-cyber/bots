@@ -3,7 +3,6 @@ import os
 import threading
 from flask import Flask
 from dotenv import load_dotenv
-
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
@@ -133,7 +132,6 @@ async def get_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await greet(update, context)
     return ConversationHandler.END
 
-
 # --- Запуск Telegram-бота ---
 async def run_bot():
     application = ApplicationBuilder().token(BOT_TOKEN).build()
@@ -158,7 +156,7 @@ async def run_bot():
     application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, greet))
 
     print("🚀 Бот запущен (async polling)...")
-    await application.run_polling(close_loop=False)
+    await application.run_polling()
 
 # --- Flask в отдельном потоке ---
 def start_flask():
@@ -166,9 +164,10 @@ def start_flask():
     app.run(host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
-    # Запускаем Flask отдельно
-    threading.Thread(target=start_flask).start()
+    # Flask в отдельном потоке
+    threading.Thread(target=start_flask, daemon=True).start()
 
-    # Запускаем Telegram-бота в event loop
-    asyncio.get_event_loop().run_until_complete(run_bot())
+    # Telegram-бот в основном потоке
+    asyncio.run(run_bot())
+
 
