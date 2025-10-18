@@ -1,9 +1,9 @@
-# bot.py — Render-ready version
+# bot.py — Render-ready version (fixed event loop issue)
 import os
 import threading
+import asyncio
 from flask import Flask
 from dotenv import load_dotenv
-import asyncio
 
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
@@ -11,24 +11,25 @@ from telegram.ext import (
     ConversationHandler, ContextTypes, filters
 )
 
-# --- Load env ---
+# --- Load environment ---
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 if not BOT_TOKEN:
-    raise RuntimeError("❌ BOT_TOKEN not set. Put BOT_TOKEN into Render Environment variables.")
+    raise RuntimeError("❌ BOT_TOKEN not set. Add BOT_TOKEN to Render Environment variables.")
 GROUP_ID = int(os.getenv("GROUP_ID", "-4986401168"))
 
 # --- Conversation states ---
 NAME, AGE, CITIZENSHIP, FROM_COUNTRY, DATES, PEOPLE, PURPOSE, CONTACT = range(8)
 
-# --- Flask app for healthchecks (Render expects a bound port) ---
+# --- Flask app for Render health check ---
 app = Flask(__name__)
 
 @app.route("/")
 def index():
     return "✅ Bot is running (Render health endpoint).", 200
 
-# --- Handlers (kept your original questionnaire logic) ---
+
+# --- Handlers (анкета полностью сохранена) ---
 async def greet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     name = user.first_name or user.username or "друг"
@@ -38,6 +39,7 @@ async def greet(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Я помогу вам с легальной иммиграцией в США.\n\n"
         "Нажмите кнопку ниже, чтобы начать заполнение анкеты 👇"
     )
+
     try:
         with open("usa_flag.jpg", "rb") as photo:
             await update.message.reply_photo(
@@ -133,9 +135,13 @@ async def get_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await greet(update, context)
     return ConversationHandler.END
 
-# --- Telegram runner (runs in a separate thread) ---
+
+# --- Telegram runner with event loop fix ---
 def telegram_thread_target():
-    # Build synchronous Application and run_polling (blocking) inside thread
+    # Создаём новый event loop в этом потоке
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     conv_handler = ConversationHandler(
@@ -157,18 +163,17 @@ def telegram_thread_target():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, greet))
 
-    # This is blocking call but it's okay inside the thread
     print("🚀 Telegram thread: starting run_polling()")
-    app.run_polling()
+    loop.run_until_complete(app.run_polling())
     print("⚠️ Telegram thread: run_polling() exited")
 
 
 if __name__ == "__main__":
-    # 1) Start Telegram in background daemon thread
+    # 1️⃣ Запускаем Telegram в отдельном потоке
     telegram_thread = threading.Thread(target=telegram_thread_target, name="tg-thread", daemon=True)
     telegram_thread.start()
 
-    # 2) Run Flask in main thread and bind to PORT (Render uses this to keep service alive)
+    # 2️⃣ Flask остаётся для Render health-check
     port = int(os.environ.get("PORT", 10000))
     print(f"🌐 Flask healthcheck available at 0.0.0.0:{port}")
     app.run(host="0.0.0.0", port=port)
